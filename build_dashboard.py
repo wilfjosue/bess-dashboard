@@ -43,8 +43,8 @@ C = {
 
 HITO_PLAN     = datetime(2026, 6, 24)
 HITO_OBJETIVO = datetime(2026, 5, 30)
-FECHA_CORTE   = datetime(2026, 3, 19)
 HOY           = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+FECHA_CORTE   = HOY   # siempre = hoy; se usa como límite de la línea "real" en Curva S
 BUFFER_COES   = 13   # días entre fin respuesta COES y puesta en marcha
 
 MACROFASES = [
@@ -355,9 +355,11 @@ def build_curva_s_fig():
             marker=dict(size=4), connectgaps=False,
             hovertemplate="%{y:.1f}%<extra>"+planta+" Real</extra>"))
 
-    fig.add_shape(type="line", x0="2026-03-19", x1="2026-03-19", y0=0, y1=1,
+    _corte_str = HOY.strftime("%Y-%m-%d")
+    _corte_lbl = fmt_fecha(HOY)
+    fig.add_shape(type="line", x0=_corte_str, x1=_corte_str, y0=0, y1=1,
                   yref="paper", line=dict(color=C["amarillo"], dash="dash", width=1.5))
-    fig.add_annotation(x="2026-03-19", y=1.02, yref="paper", text="Corte 19/Mar",
+    fig.add_annotation(x=_corte_str, y=1.02, yref="paper", text=f"Corte {_corte_lbl}",
                        showarrow=False, font=dict(color=C["amarillo"], size=10), xanchor="left")
     fig.update_layout(**PLOT_LAYOUT,
         xaxis=dict(title="", gridcolor=C["faint"], tickformat="%b %Y", showgrid=True),
@@ -434,7 +436,7 @@ def build_gantt_fig(planta):
                            f"Estado: {estado}<extra></extra>")))
     # Líneas de referencia
     for date_str, col, label in [
-        ("2026-03-19", C["amarillo"], "19/Mar"),
+        (HOY.strftime("%Y-%m-%d"), C["amarillo"], fmt_fecha(HOY)),
         ("2026-05-30", C["verde"],    "30/May obj."),
         ("2026-06-24", C["rojo"],     "24/Jun plan"),
     ]:
@@ -497,9 +499,9 @@ def build_gantt_detalle(planta):
                            "<extra></extra>")))
 
     for date_str, col, label in [
-        ("2026-03-19",C["amarillo"],"19/Mar"),
-        ("2026-05-30",C["verde"],   "30/May"),
-        ("2026-06-24",C["rojo"],    "24/Jun"),
+        (HOY.strftime("%Y-%m-%d"), C["amarillo"], fmt_fecha(HOY)),
+        ("2026-05-30", C["verde"],  "30/May"),
+        ("2026-06-24", C["rojo"],   "24/Jun"),
     ]:
         fig.add_shape(type="line", x0=date_str, x1=date_str, y0=0, y1=1,
                       yref="paper", line=dict(color=col, dash="dash", width=1))
@@ -700,6 +702,33 @@ banner_ico = "🔴" if dias_obj <= 45 else "🟡"
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. GENERAR HTML
 # ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# DIAGNÓSTICO — imprime antes de generar HTML
+# ─────────────────────────────────────────────────────────────────────────────
+print("\n" + "─"*60)
+print(f"  DIAGNÓSTICO — {HOY.strftime('%d/%m/%Y %H:%M')}")
+print("─"*60)
+print(f"  HOY (datetime.today())  : {HOY.strftime('%d/%m/%Y')}")
+print(f"  FECHA_CORTE             : {FECHA_CORTE.strftime('%d/%m/%Y')}  ← igual a HOY ✓")
+print()
+print(f"  {'Macrofase':<32} {'Plan M':>7} {'Real M':>7} {'Plan R':>7} {'Real R':>7}")
+print(f"  {'─'*32} {'─'*7} {'─'*7} {'─'*7} {'─'*7}")
+for mf in MACROFASES:
+    row_m = df_avance[(df_avance["planta"]=="Majes")       & (df_avance["id_tarea"]==mf["id"])]
+    row_r = df_avance[(df_avance["planta"]=="Repartición") & (df_avance["id_tarea"]==mf["id"])]
+    pm = f"{float(row_m['pct_plan'].values[0]):.1f}%" if not row_m.empty else "—"
+    rm = f"{float(row_m['pct_real'].values[0]):.1f}%" if not row_m.empty else "—"
+    pr = f"{float(row_r['pct_plan'].values[0]):.1f}%" if not row_r.empty else "—"
+    rr = f"{float(row_r['pct_real'].values[0]):.1f}%" if not row_r.empty else "—"
+    print(f"  {mf['nombre']:<32} {pm:>7} {rm:>7} {pr:>7} {rr:>7}")
+print()
+print(f"  KPI GLOBAL Majes        : {kpi_m:.1f}%  (promedio pct_real 7 macrofases)")
+print(f"  KPI GLOBAL Repartición  : {kpi_r:.1f}%  (promedio pct_real 7 macrofases)")
+print(f"  SPI promedio global     : {kpi_spi:.2f}")
+print(f"  pct_real = pct_plan_calc cuando pct_completado vacío en xlsx  ✓")
+print(f"  pct_plan_calc = pct_planeado_dinamico(inicio, fin, HOY)       ✓")
+print("─"*60 + "\n")
+
 print("🎨 Generando HTML...")
 
 HTML = f"""<!DOCTYPE html>
