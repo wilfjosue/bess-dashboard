@@ -64,16 +64,26 @@ COMENTARIOS = {
     2: {"Majes":"ITS aprobado, EIA en revisión final",
         "Repartición":"ITS en levantamiento observaciones"},
     3: {"Majes":"Plataforma BESS y sala eléctrica en progreso",
-        "Repartición":"Excavación completada, cimentación en curso"},
-    4: {"Majes":"Zanjas iniciadas sector norte",
-        "Repartición":"Replanteo topográfico completado"},
-    5: {"Majes":"BESS containers en tránsito",
-        "Repartición":"Retraso en aduana — en seguimiento"},
+        "Repartición":"Civil completado — cimentaciones aceptadas"},
+    4: {"Majes":"Desencofrado en ejecución (27-30/03) · Curado y acabado desde 31/03",
+        "Repartición":"Desencofrado y curado en curso"},
+    5: {"Majes":"Izaje BESS 1 y 2 pendiente dom/lun 29-30/03 — condiciones climáticas",
+        "Repartición":"Izaje BESS 1 ✅ 26/03 · Izaje BESS 2 ✅ 27/03 · MV Station 28/03"},
     6: {"Majes":"Modelo PF en elaboración",
         "Repartición":"Revisión de información iniciada"},
     7: {"Majes":"Pendiente aprobación COES",
         "Repartición":"Pendiente aprobación COES"},
 }
+
+# Novedades manuales del período — editar cada semana
+# Se muestran en el panel "Alertas del Período" encima de las alertas automáticas
+NOVEDADES = [
+    {"tipo":"logro",   "texto":"Repartición — Izaje BESS 1 completado 26/03/26"},
+    {"tipo":"logro",   "texto":"Repartición — Izaje BESS 2 completado 27/03/26"},
+    {"tipo":"info",    "texto":"Repartición — Izaje MV Station programado 28/03/26"},
+    {"tipo":"atencion","texto":"Majes — Izaje BESS pendiente, sujeto a condiciones climáticas. Domingo/Lunes 29-30/03"},
+    {"tipo":"info",    "texto":"Majes — Domingo 29/03: Desencofrado canaletas, curado concreto, posicionamiento grúa y armado contrapeso"},
+]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. PARSEAR EXCELS
@@ -288,26 +298,33 @@ def build_alertas():
 
 # ── Hitos clave ──────────────────────────────────────────────────────────────
 HITOS_CLAVE = [
-    {"nombre":"Aprobación COES",         "fecha":datetime(2026,6,5),  "critico":True},
-    {"nombre":"Puesta en marcha (obj.)",  "fecha":HITO_OBJETIVO,       "critico":True},
-    {"nombre":"Puesta en marcha (plan)",  "fecha":HITO_PLAN,           "critico":False},
-    {"nombre":"Presentación COES",        "fecha":datetime(2026,4,20), "critico":True},
-    {"nombre":"Fin Estudio COES",         "fecha":datetime(2026,4,15), "critico":False},
-    {"nombre":"Fin Zanjas y Cableado",    "fecha":datetime(2026,5,10), "critico":False},
-    {"nombre":"Fin Permisos HSE",         "fecha":datetime(2026,3,21), "critico":False},
+    {"nombre":"✅ Izaje BESS 1 — Repartición",  "fecha":datetime(2026,3,26), "critico":False, "completado":True},
+    {"nombre":"✅ Izaje BESS 2 — Repartición",  "fecha":datetime(2026,3,27), "critico":False, "completado":True},
+    {"nombre":"Izaje MV Station — Repartición", "fecha":datetime(2026,3,28), "critico":True},
+    {"nombre":"Izaje BESS 1 y 2 — Majes",       "fecha":datetime(2026,3,30), "critico":True},
+    {"nombre":"Fin Permisos HSE",                "fecha":datetime(2026,3,31), "critico":False},
+    {"nombre":"Presentación COES",               "fecha":datetime(2026,4,20), "critico":True},
+    {"nombre":"Fin Estudio COES",                "fecha":datetime(2026,4,15), "critico":False},
+    {"nombre":"Fin Zanjas y Cableado",           "fecha":datetime(2026,5,10), "critico":False},
+    {"nombre":"Aprobación COES",                 "fecha":datetime(2026,6,5),  "critico":True},
+    {"nombre":"Puesta en marcha (obj.)",         "fecha":HITO_OBJETIVO,       "critico":True},
+    {"nombre":"Puesta en marcha (plan)",         "fecha":HITO_PLAN,           "critico":False},
 ]
 
 def build_hitos_table():
     rows = []
     for h in sorted(HITOS_CLAVE, key=lambda x: x["fecha"]):
         d = (h["fecha"] - HOY).days
-        if d < -30: estado_h, cls = "Completado", "completado"
-        elif d < 0: estado_h, cls = "Vencido",    "vencido"
-        elif d <= 14: estado_h, cls = "Urgente",  "urgente"
-        elif d <= 30: estado_h, cls = "Próximo",  "proximo"
-        else:         estado_h, cls = "Pendiente","pendiente"
+        if h.get("completado"):         estado_h, cls = "Completado",  "completado"
+        elif d < -30:                   estado_h, cls = "Completado",  "completado"
+        elif d < 0:                     estado_h, cls = "Vencido",     "vencido"
+        elif d <= 3:                    estado_h, cls = "HOY/Mañana",  "urgente"
+        elif d <= 14:                   estado_h, cls = "Urgente",     "urgente"
+        elif d <= 30:                   estado_h, cls = "Próximo",     "proximo"
+        else:                           estado_h, cls = "Pendiente",   "pendiente"
         rows.append({"nombre":h["nombre"],"fecha":fmt_fecha(h["fecha"]),
-                     "dias":d,"estado":estado_h,"cls":cls,"critico":h["critico"]})
+                     "dias":d,"estado":estado_h,"cls":cls,
+                     "critico":h.get("critico",False)})
     return rows
 
 tareas_hoy    = tareas_activas_hoy()
@@ -617,22 +634,42 @@ def render_hitos():
         </tr>"""
     return html
 
-# ── Alertas automáticas ───────────────────────────────────────────────────────
+# ── Alertas del período (novedades manuales + automáticas SPI) ───────────────
 def render_alertas():
-    if not alertas:
-        return '<div class="no-alert">✅ Sin alertas activas — todas las macrofases van según plan</div>'
     html = ""
-    for a in alertas:
+    # — Novedades manuales del período —
+    tipo_cfg = {
+        "logro":    ("pd",  "✅"),
+        "info":     ("pa",  "📅"),
+        "atencion": ("pw",  "⚠️"),
+        "critico":  ("pl",  "🔴"),
+    }
+    for n in NOVEDADES:
+        pill_cls, ico = tipo_cfg.get(n["tipo"], ("pp","ℹ️"))
+        al_cls = "al-r" if n["tipo"]=="critico" else ("al-a" if n["tipo"]=="atencion" else "al-b")
         html += f"""
-        <div class="al al-r">
-          <div class="al-ico">⚠️</div>
+        <div class="al {al_cls}">
+          <div class="al-ico">{ico}</div>
           <div>
-            <div class="al-ti">{pill_planta(a['planta'])} {a['macrofase']}</div>
-            <div class="al-bo">Real {a['pct_real']:.0f}% vs Plan {a['pct_plan']:.0f}%
-              — Desviación <b>{a['desv']:.0f} pp</b></div>
-            <div class="al-bo">{a['comentario']}</div>
+            <div class="al-bo">{n['texto']}</div>
           </div>
         </div>"""
+    # — Alertas automáticas SPI —
+    if alertas:
+        html += '<div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:10px 0 6px;">ALERTAS SPI AUTOMÁTICAS</div>'
+        for a in alertas:
+            html += f"""
+            <div class="al al-r">
+              <div class="al-ico">⚠️</div>
+              <div>
+                <div class="al-ti">{pill_planta(a['planta'])} {a['macrofase']}</div>
+                <div class="al-bo">Real {a['pct_real']:.0f}% vs Plan {a['pct_plan']:.0f}%
+                  — Desviación <b>{a['desv']:.0f} pp</b></div>
+                <div class="al-bo">{a['comentario']}</div>
+              </div>
+            </div>"""
+    if not html:
+        html = '<div class="no-alert">✅ Sin alertas activas — todas las macrofases van según plan</div>'
     return html
 
 # ── Actividades de hoy ────────────────────────────────────────────────────────
@@ -1048,8 +1085,9 @@ table.gt tr:hover td{{background:#f6f9fc;}}
         </div>
       </div>
       <div class="card">
-        <div class="card-h"><div class="card-t">🚨 Alertas del Período</div>
-          <span class="pill {'pl' if alertas else 'pd'}">{len(alertas)} {'alerta' if len(alertas)==1 else 'alertas'}</span>
+        <div class="card-h"><div class="card-t">🚨 Alertas del Período — Corte {HOY.strftime('%d/%m/%Y')}</div>
+          <span class="pill pa">{len(NOVEDADES)} novedad{'es' if len(NOVEDADES)!=1 else ''}</span>
+          {'<span class="pill pl" style="margin-left:4px;">'+str(len(alertas))+' alerta SPI</span>' if alertas else ''}
         </div>
         <div class="card-b">{render_alertas()}</div>
       </div>
