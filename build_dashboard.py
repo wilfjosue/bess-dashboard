@@ -43,8 +43,8 @@ C = {
 
 HITO_PLAN     = datetime(2026, 6, 24)
 HITO_OBJETIVO = datetime(2026, 5, 30)
-HOY           = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
-FECHA_CORTE   = HOY   # siempre = hoy; se usa como límite de la línea "real" en Curva S
+FECHA_CORTE   = datetime(2026, 4, 10)   # ← EDITAR cada corte semanal
+GENERADO_EL   = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
 BUFFER_COES   = 13   # días entre fin respuesta COES y puesta en marcha
 
 MACROFASES = [
@@ -63,14 +63,14 @@ COMENTARIOS = {
         "Repartición":"Ingeniería civil y eléctrica aprobadas"},
     2: {"Majes":"ITS aprobado, EIA en revisión final",
         "Repartición":"ITS en levantamiento observaciones"},
-    3: {"Majes":"Plataforma BESS y sala eléctrica en progreso",
+    3: {"Majes":"Civil completado — cimentaciones aceptadas",
         "Repartición":"Civil completado — cimentaciones aceptadas"},
-    4: {"Majes":"Desencofrado en ejecución (27-30/03) · Curado y acabado desde 31/03",
-        "Repartición":"Desencofrado y curado en curso"},
-    5: {"Majes":"Izaje BESS 1 y 2 pendiente dom/lun 29-30/03 — condiciones climáticas",
-        "Repartición":"Izaje BESS 1 ✅ 26/03 · Izaje BESS 2 ✅ 27/03 · MV Station 28/03"},
-    6: {"Majes":"Modelo PF en elaboración",
-        "Repartición":"Revisión de información iniciada"},
+    4: {"Majes":"Desencofrado zanjas +11d retraso (plan 30/03, pendiente)",
+        "Repartición":"Desencofrado zanjas +11d retraso (plan 30/03, pendiente)"},
+    5: {"Majes":"Izaje BESS 1,2,MV ✅ completados · Puesta a tierra sin iniciar",
+        "Repartición":"Izaje BESS 1,2,MV ✅ completados · Puesta a tierra sin iniciar"},
+    6: {"Majes":"🔴 BLOQUEADO — archivos DIgSILENT incorrectos de Itechene",
+        "Repartición":"🔴 BLOQUEADO — archivos DIgSILENT incorrectos de Itechene"},
     7: {"Majes":"Pendiente aprobación COES",
         "Repartición":"Pendiente aprobación COES"},
 }
@@ -78,11 +78,11 @@ COMENTARIOS = {
 # Novedades manuales del período — editar cada semana
 # Se muestran en el panel "Alertas del Período" encima de las alertas automáticas
 NOVEDADES = [
-    {"tipo":"logro",   "texto":"Repartición — Izaje BESS 1 completado 26/03/26"},
-    {"tipo":"logro",   "texto":"Repartición — Izaje BESS 2 completado 27/03/26"},
-    {"tipo":"info",    "texto":"Repartición — Izaje MV Station programado 28/03/26"},
-    {"tipo":"atencion","texto":"Majes — Izaje BESS pendiente, sujeto a condiciones climáticas. Domingo/Lunes 29-30/03"},
-    {"tipo":"info",    "texto":"Majes — Domingo 29/03: Desencofrado canaletas, curado concreto, posicionamiento grúa y armado contrapeso"},
+    {"tipo":"critico", "texto":"🔴 CRÍTICO — COES BLOQUEADO: Itechene no entrega archivos DIgSILENT correctos. Consultor sin insumos. Presentación 20/04 EN RIESGO. Objetivo 30/05 comprometido."},
+    {"tipo":"atencion","texto":"⚠️ MAJES y REPARTICIÓN — Desencofrado zanjas con +11 días de retraso (plan 30/03, pendiente)."},
+    {"tipo":"atencion","texto":"⚠️ AMBAS PLANTAS — Puesta a tierra sin iniciar. Materiales recién llegaron a obra."},
+    {"tipo":"logro",   "texto":"✅ MAJES — Izaje BESS 1, BESS 2 y MV Station completados."},
+    {"tipo":"logro",   "texto":"✅ REPARTICIÓN — Izaje BESS 1 (26/03), BESS 2 (27/03), MV Station (28/03) completados."},
 ]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -144,8 +144,8 @@ print(f"   Majes: {len(df_majes)} | Repartición: {len(df_rep)} tareas")
 # HELPERS DE CÁLCULO — deben estar antes de load_avance_semanal
 # ─────────────────────────────────────────────────────────────────────────────
 def pct_planeado_dinamico(inicio, fin, hoy=None):
-    """% teórico planificado recalculado siempre con datetime.today()."""
-    if hoy is None: hoy = HOY
+    """% teórico planificado a FECHA_CORTE (no datetime.today)."""
+    if hoy is None: hoy = FECHA_CORTE
     if pd.isna(inicio) or pd.isna(fin): return 0.0
     inicio, fin, hoy = pd.Timestamp(inicio), pd.Timestamp(fin), pd.Timestamp(hoy)
     if hoy <= inicio: return 0.0
@@ -168,7 +168,9 @@ def color_hex_light(hex_color):
 # 2. CARGAR avance_semanal.xlsx → agregar a macrofase
 # ─────────────────────────────────────────────────────────────────────────────
 def load_avance_semanal():
-    path = os.path.join(DATA_DIR, "avance_semanal.xlsx")
+    # Usar _new si existe (cuando el original está bloqueado por Excel)
+    new_path = os.path.join(DATA_DIR, "avance_semanal_new.xlsx")
+    path     = new_path if os.path.exists(new_path) else os.path.join(DATA_DIR, "avance_semanal.xlsx")
     df   = pd.read_excel(path)
     df["fecha_inicio_plan"] = pd.to_datetime(df["fecha_inicio_plan"], errors="coerce")
     df["fecha_fin_plan"]    = pd.to_datetime(df["fecha_fin_plan"],    errors="coerce")
@@ -205,13 +207,13 @@ def load_avance_semanal():
 
 print("📊 Cargando avance_semanal.xlsx...")
 df_avance = load_avance_semanal()
-print(f"   ✅ {len(df_avance)} macrofases | HOY = {HOY.strftime('%d/%m/%Y')}")
+print(f"   ✅ {len(df_avance)} macrofases | FECHA_CORTE = {FECHA_CORTE.strftime('%d/%m/%Y')}")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS ADICIONALES
 # ─────────────────────────────────────────────────────────────────────────────
 def dias_restantes(target):
-    return (target - HOY).days
+    return (target - FECHA_CORTE).days
 
 def fmt_fecha(dt):
     if pd.isna(dt): return "—"
@@ -246,11 +248,11 @@ def semaforo_global(planta):
 sg_majes = semaforo_global("Majes")
 sg_rep   = semaforo_global("Repartición")
 
-# ── Actividades ejecutándose HOY ─────────────────────────────────────────────
+# ── Actividades ejecutándose en FECHA_CORTE ──────────────────────────────────
 def tareas_activas_hoy():
     sub = df_all[
         df_all["Comienzo"].notna() & df_all["Fin"].notna() &
-        (df_all["Comienzo"] <= HOY) & (df_all["Fin"] >= HOY) &
+        (df_all["Comienzo"] <= FECHA_CORTE) & (df_all["Fin"] >= FECHA_CORTE) &
         (df_all["Id"] >= 3)
     ].copy()
     rows = []
@@ -265,12 +267,12 @@ def tareas_activas_hoy():
                      "pct_plan":pct_plan,"pct_real":pct_real,"color":col})
     return sorted(rows, key=lambda x: (x["planta"],x["id"]))
 
-# ── Actividades próximas 14 días ─────────────────────────────────────────────
+# ── Actividades próximas 14 días desde FECHA_CORTE ───────────────────────────
 def tareas_proximas():
-    lim = HOY + timedelta(days=14)
+    lim = FECHA_CORTE + timedelta(days=14)
     sub = df_all[
         df_all["Comienzo"].notna() &
-        (df_all["Comienzo"] > HOY) & (df_all["Comienzo"] <= lim) &
+        (df_all["Comienzo"] > FECHA_CORTE) & (df_all["Comienzo"] <= lim) &
         (df_all["Id"] >= 3)
     ].copy()
     rows = []
@@ -278,7 +280,7 @@ def tareas_proximas():
         av = df_avance[(df_avance["planta"]==r["planta"]) &
                        (df_avance["macrofase"]==r["macrofase"])]
         col = av["color"].values[0] if not av.empty else C["celeste"]
-        dias_para = (r["Comienzo"] - HOY).days
+        dias_para = (r["Comienzo"] - FECHA_CORTE).days
         rows.append({"planta":r["planta"],"id":int(r["Id"]),"nombre":str(r["_nombre"])[:60],
                      "macrofase":r["macrofase"],"inicio":r["Comienzo"],"fin":r["Fin"],
                      "dias_para":dias_para,"color":col})
@@ -298,23 +300,24 @@ def build_alertas():
 
 # ── Hitos clave ──────────────────────────────────────────────────────────────
 HITOS_CLAVE = [
-    {"nombre":"✅ Izaje BESS 1 — Repartición",  "fecha":datetime(2026,3,26), "critico":False, "completado":True},
-    {"nombre":"✅ Izaje BESS 2 — Repartición",  "fecha":datetime(2026,3,27), "critico":False, "completado":True},
-    {"nombre":"Izaje MV Station — Repartición", "fecha":datetime(2026,3,28), "critico":True},
-    {"nombre":"Izaje BESS 1 y 2 — Majes",       "fecha":datetime(2026,3,30), "critico":True},
-    {"nombre":"Fin Permisos HSE",                "fecha":datetime(2026,3,31), "critico":False},
-    {"nombre":"Presentación COES",               "fecha":datetime(2026,4,20), "critico":True},
-    {"nombre":"Fin Estudio COES",                "fecha":datetime(2026,4,15), "critico":False},
-    {"nombre":"Fin Zanjas y Cableado",           "fecha":datetime(2026,5,10), "critico":False},
-    {"nombre":"Aprobación COES",                 "fecha":datetime(2026,6,5),  "critico":True},
-    {"nombre":"Puesta en marcha (obj.)",         "fecha":HITO_OBJETIVO,       "critico":True},
-    {"nombre":"Puesta en marcha (plan)",         "fecha":HITO_PLAN,           "critico":False},
+    {"nombre":"✅ Izaje BESS 1 — Repartición",       "fecha":datetime(2026,3,26), "critico":False, "completado":True},
+    {"nombre":"✅ Izaje BESS 2 — Repartición",       "fecha":datetime(2026,3,27), "critico":False, "completado":True},
+    {"nombre":"✅ Izaje MV Station — Repartición",   "fecha":datetime(2026,3,28), "critico":False, "completado":True},
+    {"nombre":"✅ Izaje BESS 1, 2 y MV — Majes",    "fecha":datetime(2026,3,30), "critico":False, "completado":True},
+    {"nombre":"Desencofrado zanjas (en retraso)",    "fecha":datetime(2026,4,15), "critico":False},
+    {"nombre":"Fin Puesta a Tierra (ambas plantas)", "fecha":datetime(2026,4,20), "critico":False},
+    {"nombre":"🔴 Presentación COES — EN RIESGO",   "fecha":datetime(2026,4,20), "critico":True},
+    {"nombre":"Fin Estudio COES",                    "fecha":datetime(2026,5,5),  "critico":False},
+    {"nombre":"Fin Zanjas y Cableado",               "fecha":datetime(2026,5,10), "critico":False},
+    {"nombre":"Aprobación COES",                     "fecha":datetime(2026,6,5),  "critico":True},
+    {"nombre":"Puesta en marcha (obj.)",             "fecha":HITO_OBJETIVO,       "critico":True},
+    {"nombre":"Puesta en marcha (plan)",             "fecha":HITO_PLAN,           "critico":False},
 ]
 
 def build_hitos_table():
     rows = []
     for h in sorted(HITOS_CLAVE, key=lambda x: x["fecha"]):
-        d = (h["fecha"] - HOY).days
+        d = (h["fecha"] - FECHA_CORTE).days
         if h.get("completado"):         estado_h, cls = "Completado",  "completado"
         elif d < -30:                   estado_h, cls = "Completado",  "completado"
         elif d < 0:                     estado_h, cls = "Vencido",     "vencido"
@@ -372,8 +375,8 @@ def build_curva_s_fig():
             marker=dict(size=4), connectgaps=False,
             hovertemplate="%{y:.1f}%<extra>"+planta+" Real</extra>"))
 
-    _corte_str = HOY.strftime("%Y-%m-%d")
-    _corte_lbl = fmt_fecha(HOY)
+    _corte_str = FECHA_CORTE.strftime("%Y-%m-%d")
+    _corte_lbl = fmt_fecha(FECHA_CORTE)
     fig.add_shape(type="line", x0=_corte_str, x1=_corte_str, y0=0, y1=1,
                   yref="paper", line=dict(color=C["amarillo"], dash="dash", width=1.5))
     fig.add_annotation(x=_corte_str, y=1.02, yref="paper", text=f"Corte {_corte_lbl}",
@@ -453,7 +456,7 @@ def build_gantt_fig(planta):
                            f"Estado: {estado}<extra></extra>")))
     # Líneas de referencia
     for date_str, col, label in [
-        (HOY.strftime("%Y-%m-%d"), C["amarillo"], fmt_fecha(HOY)),
+        (FECHA_CORTE.strftime("%Y-%m-%d"), C["amarillo"], fmt_fecha(FECHA_CORTE)),
         ("2026-05-30", C["verde"],    "30/May obj."),
         ("2026-06-24", C["rojo"],     "24/Jun plan"),
     ]:
@@ -516,7 +519,7 @@ def build_gantt_detalle(planta):
                            "<extra></extra>")))
 
     for date_str, col, label in [
-        (HOY.strftime("%Y-%m-%d"), C["amarillo"], fmt_fecha(HOY)),
+        (FECHA_CORTE.strftime("%Y-%m-%d"), C["amarillo"], fmt_fecha(FECHA_CORTE)),
         ("2026-05-30", C["verde"],  "30/May"),
         ("2026-06-24", C["rojo"],   "24/Jun"),
     ]:
@@ -743,10 +746,10 @@ banner_ico = "🔴" if dias_obj <= 45 else "🟡"
 # DIAGNÓSTICO — imprime antes de generar HTML
 # ─────────────────────────────────────────────────────────────────────────────
 print("\n" + "─"*60)
-print(f"  DIAGNÓSTICO — {HOY.strftime('%d/%m/%Y %H:%M')}")
+print(f"  DIAGNÓSTICO — Generado el {GENERADO_EL.strftime('%d/%m/%Y %H:%M')}")
 print("─"*60)
-print(f"  HOY (datetime.today())  : {HOY.strftime('%d/%m/%Y')}")
-print(f"  FECHA_CORTE             : {FECHA_CORTE.strftime('%d/%m/%Y')}  ← igual a HOY ✓")
+print(f"  FECHA_CORTE (datos)     : {FECHA_CORTE.strftime('%d/%m/%Y')}  ← parámetro fijo")
+print(f"  GENERADO_EL (hoy real)  : {GENERADO_EL.strftime('%d/%m/%Y')}")
 print()
 print(f"  {'Macrofase':<32} {'Plan M':>7} {'Real M':>7} {'Plan R':>7} {'Real R':>7}")
 print(f"  {'─'*32} {'─'*7} {'─'*7} {'─'*7} {'─'*7}")
@@ -762,8 +765,8 @@ print()
 print(f"  KPI GLOBAL Majes        : {kpi_m:.1f}%  (promedio pct_real 7 macrofases)")
 print(f"  KPI GLOBAL Repartición  : {kpi_r:.1f}%  (promedio pct_real 7 macrofases)")
 print(f"  SPI promedio global     : {kpi_spi:.2f}")
-print(f"  pct_real = pct_plan_calc cuando pct_completado vacío en xlsx  ✓")
-print(f"  pct_plan_calc = pct_planeado_dinamico(inicio, fin, HOY)       ✓")
+print(f"  pct_real = pct_plan_calc cuando pct_completado vacío en xlsx       ✓")
+print(f"  pct_plan_calc = pct_planeado_dinamico(inicio, fin, FECHA_CORTE)  ✓")
 print("─"*60 + "\n")
 
 print("🎨 Generando HTML...")
@@ -986,7 +989,8 @@ table.gt tr:hover td{{background:#f6f9fc;}}
     </div>
     <div class="live">
       <div class="dot"></div>
-      <span>Corte {HOY.strftime('%d/%m/%Y')}</span>
+      <span>Corte {FECHA_CORTE.strftime('%d/%m/%Y')}</span>
+      <span style="font-size:9px;color:#8899aa;margin-left:8px;">gen. {GENERADO_EL.strftime('%d/%m/%Y')}</span>
     </div>
   </div>
 </header>
@@ -1017,7 +1021,7 @@ table.gt tr:hover td{{background:#f6f9fc;}}
       <div class="banner-title">OBJETIVO INTERNO: Puesta en marcha 30/05/26</div>
       <div class="banner-body">
         Quedan <b>{dias_obj} días</b> al objetivo · Plan original 24/06/26 (brecha de {brecha} días)
-        · Corte de información: {HOY.strftime('%d de %B de %Y')}
+        · Corte de información: {FECHA_CORTE.strftime('%d/%m/%Y')} · Generado: {GENERADO_EL.strftime('%d/%m/%Y')}
       </div>
     </div>
   </div>
@@ -1085,7 +1089,7 @@ table.gt tr:hover td{{background:#f6f9fc;}}
         </div>
       </div>
       <div class="card">
-        <div class="card-h"><div class="card-t">🚨 Alertas del Período — Corte {HOY.strftime('%d/%m/%Y')}</div>
+        <div class="card-h"><div class="card-t">🚨 Alertas del Período — Corte {FECHA_CORTE.strftime('%d/%m/%Y')}</div>
           <span class="pill pa">{len(NOVEDADES)} novedad{'es' if len(NOVEDADES)!=1 else ''}</span>
           {'<span class="pill pl" style="margin-left:4px;">'+str(len(alertas))+' alerta SPI</span>' if alertas else ''}
         </div>
@@ -1114,7 +1118,7 @@ table.gt tr:hover td{{background:#f6f9fc;}}
   <!-- Actividades ejecutándose hoy -->
   <div class="card">
     <div class="card-h">
-      <div class="card-t">▶ Actividades en Ejecución HOY ({HOY.strftime('%d/%m/%Y')})</div>
+      <div class="card-t">▶ Actividades en Ejecución al {FECHA_CORTE.strftime('%d/%m/%Y')}</div>
       <span class="pill pa">{len(tareas_hoy)} activas</span>
     </div>
     <div class="card-b np">
@@ -1378,7 +1382,7 @@ with open(out_path, "w", encoding="utf-8") as f:
 
 size_kb = os.path.getsize(out_path) // 1024
 print(f"\n✅ Dashboard generado: outputs/dashboard_bess.html ({size_kb} KB)")
-print(f"   HOY     = {HOY.strftime('%d/%m/%Y')}")
+print(f"   FECHA_CORTE = {FECHA_CORTE.strftime('%d/%m/%Y')}  |  Generado: {GENERADO_EL.strftime('%d/%m/%Y')}")
 print(f"   KPI Majes = {kpi_m:.1f}% | Repartición = {kpi_r:.1f}% | SPI = {kpi_spi:.2f}")
 print(f"   Días al objetivo 30/May: {dias_obj}")
 print(f"   Alertas activas: {len(alertas)}")
